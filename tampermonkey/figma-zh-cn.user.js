@@ -13,6 +13,7 @@
 // @grant        GM_unregisterMenuCommand
 // @grant        GM_notification
 // @connect      fanyi.iflyrec.com
+// @connect      raw.githubusercontent.com
 // ==/UserScript==
 
 (function () {
@@ -24,6 +25,7 @@
     enable_TokenFallback: GM_getValue('enable_TokenFallback', true),
     enable_AttrTranslate: GM_getValue('enable_AttrTranslate', true),
     enable_RemoteTranslate: GM_getValue('enable_RemoteTranslate', false),
+    enable_RemoteDict: GM_getValue('enable_RemoteDict', true),
     enable_DebugLog: GM_getValue('enable_DebugLog', false)
   };
 
@@ -89,7 +91,14 @@
         responseIdentifier: 'biz[0].sectionResult[0].dst'
       }
     },
-    transEngine: 'iflyrec'
+    transEngine: 'iflyrec',
+    REMOTE_DICT: {
+      url: 'https://raw.githubusercontent.com/Zazak1/Figma-Chinese/main/dict/figma-zh-CN.json',
+      timeout: 8000,
+      cacheKey: 'remote_dict_cache_v1',
+      cacheAtKey: 'remote_dict_cache_at_v1',
+      cacheTTL: 24 * 60 * 60 * 1000
+    }
   };
 
   let pageConfig = {};
@@ -435,20 +444,77 @@
     debugLog(message);
   }
 
-  const CANONICAL_MAP = new Map();
-  const MAP_KEYS = Object.keys(MAP);
-  for (const key of MAP_KEYS) {
-    CANONICAL_MAP.set(canonicalizeForLookup(key).toLowerCase(), MAP[key]);
+  function mergeDict(entries) {
+    let changed = 0;
+    for (const [k, v] of Object.entries(entries || {})) {
+      if (typeof k !== 'string' || typeof v !== 'string') continue;
+      if (!k.trim() || !v.trim()) continue;
+      if (MAP[k] !== v) {
+        MAP[k] = v;
+        changed += 1;
+      }
+    }
+    if (changed > 0) rebuildDictionaryIndices();
+    return changed;
   }
 
-  // Build one regex for fast phrase replacement.
-  const PHRASE_KEYS = MAP_KEYS
-    .filter((k) => k.includes(' '))
-    .sort((a, b) => b.length - a.length);
+  function requestJson(url, timeout = 8000) {
+    return new Promise((resolve) => {
+      if (typeof GM_xmlhttpRequest !== 'function') {
+        resolve(null);
+        return;
+      }
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url,
+        timeout,
+        onload: (res) => {
+          try {
+            resolve(JSON.parse(res.responseText || '{}'));
+          } catch {
+            resolve(null);
+          }
+        },
+        onerror: () => resolve(null),
+        ontimeout: () => resolve(null)
+      });
+    });
+  }
 
-  const PHRASE_REGEX = PHRASE_KEYS.length
-    ? new RegExp(`(^|[^A-Za-z0-9])(${PHRASE_KEYS.map(escapeRegExp).join('|')})(?=[^A-Za-z0-9]|$)`, 'gi')
-    : null;
+  async function loadRemoteDictionary() {
+    if (!FeatureSet.enable_RemoteDict) return;
+    const remoteConf = CONFIG.REMOTE_DICT;
+    if (!remoteConf?.url) return;
+
+    const cacheAt = GM_getValue(remoteConf.cacheAtKey, 0);
+    const cacheRaw = GM_getValue(remoteConf.cacheKey, '');
+    const now = Date.now();
+    if (cacheRaw && now - cacheAt < remoteConf.cacheTTL) {
+      try {
+        const cachedEntries = JSON.parse(cacheRaw);
+        const merged = mergeDict(cachedEntries);
+        if (merged > 0) debugLog(`remote dict cache merged: ${merged}`);
+      } catch {
+        // ignore broken cache
+      }
+    }
+
+    const remote = await requestJson(remoteConf.url, remoteConf.timeout);
+    if (!remote || typeof remote !== 'object') return;
+
+    const entries = remote.map && typeof remote.map === 'object' ? remote.map : remote;
+    const merged = mergeDict(entries);
+    if (merged > 0) {
+      GM_setValue(remoteConf.cacheKey, JSON.stringify(entries));
+      GM_setValue(remoteConf.cacheAtKey, now);
+      notify(`远程词库已更新（+${merged}）`);
+    }
+  }
+
+  const DICT_STATE = {
+    canonicalMap: new Map(),
+    phraseRegex: null
+  };
 
   function escapeRegExp(text) {
     return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -464,6 +530,19 @@
       .replace(/[“”]/g, '"')
       .replace(/…/g, '...')
       .replace(/[–—]/g, '-');
+  }
+
+  function rebuildDictionaryIndices() {
+    DICT_STATE.canonicalMap = new Map();
+    const keys = Object.keys(MAP);
+    for (const key of keys) {
+      DICT_STATE.canonicalMap.set(canonicalizeForLookup(key).toLowerCase(), MAP[key]);
+    }
+    const phraseKeys = keys.filter((k) => k.includes(' ')).sort((a, b) => b.length - a.length);
+    DICT_STATE.phraseRegex = phraseKeys.length
+      ? new RegExp(`(^|[^A-Za-z0-9])(${phraseKeys.map(escapeRegExp).join('|')})(?=[^A-Za-z0-9]|$)`, 'gi')
+      : null;
+    TRANSLATION_CACHE.clear();
   }
 
   function splitPadding(text) {
@@ -483,7 +562,7 @@
     if (!normalized) return null;
     const exact = MAP[normalized];
     if (exact) return exact;
-    return CANONICAL_MAP.get(normalized.toLowerCase()) || null;
+    return DICT_STATE.canonicalMap.get(normalized.toLowerCase()) || null;
   }
 
   function translateLooseFragment(text) {
@@ -767,8 +846,8 @@
 
   function applyPhraseReplacement(text) {
     if (!FeatureSet.enable_RegExp) return text;
-    if (!PHRASE_REGEX) return text;
-    return text.replace(PHRASE_REGEX, (match, leadBoundary, phrase) => {
+    if (!DICT_STATE.phraseRegex) return text;
+    return text.replace(DICT_STATE.phraseRegex, (match, leadBoundary, phrase) => {
       const t = lookupTranslation(phrase);
       if (t && t !== phrase) {
         STATS.phraseHits += 1;
@@ -1001,6 +1080,7 @@
       { label: '词元回退', key: 'enable_TokenFallback' },
       { label: '属性翻译', key: 'enable_AttrTranslate' },
       { label: '远程翻译', key: 'enable_RemoteTranslate' },
+      { label: '远程词库', key: 'enable_RemoteDict' },
       { label: '调试日志', key: 'enable_DebugLog' }
     ];
 
@@ -1013,6 +1093,11 @@
         notify(`${label}已${next ? '启用' : '禁用'}，刷新页面生效`);
       });
     }
+
+    GM_registerMenuCommand('立即刷新远程词库', async () => {
+      await loadRemoteDictionary();
+      notify('远程词库刷新完成');
+    });
   }
 
   function translateTextNode(node) {
@@ -1105,12 +1190,14 @@
     });
   }
 
-  function boot() {
+  async function boot() {
     if (!document.body) {
       window.requestAnimationFrame(boot);
       return;
     }
 
+    rebuildDictionaryIndices();
+    await loadRemoteDictionary();
     updatePageConfig('初始化');
     registerMenuCommand();
     scanSubtree(document.body);
