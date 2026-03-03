@@ -1,18 +1,99 @@
 // ==UserScript==
 // @name         Figma 汉化（简体中文）
 // @namespace    https://www.figma.com/
-// @version      0.3.0
+// @version      0.4.0
 // @description  Translate Figma UI text to Simplified Chinese in browser (Tampermonkey)
 // @author       linyichen
 // @match        https://www.figma.com/*
-// @run-at       document-idle
-// @grant        none
+// @run-at       document-start
+// @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
+// @grant        GM_unregisterMenuCommand
+// @grant        GM_notification
+// @connect      fanyi.iflyrec.com
 // ==/UserScript==
 
 (function () {
   'use strict';
 
-  const DEBUG = false;
+  const FeatureSet = {
+    enable_RegExp: GM_getValue('enable_RegExp', true),
+    enable_DynamicRules: GM_getValue('enable_DynamicRules', true),
+    enable_TokenFallback: GM_getValue('enable_TokenFallback', true),
+    enable_AttrTranslate: GM_getValue('enable_AttrTranslate', true),
+    enable_RemoteTranslate: GM_getValue('enable_RemoteTranslate', false),
+    enable_DebugLog: GM_getValue('enable_DebugLog', false)
+  };
+
+  const CONFIG = {
+    LANG: 'zh-CN',
+    PAGE_MAP: {
+      '/files': 'files',
+      '/design': 'design',
+      '/figjam': 'figjam',
+      '/slides': 'slides',
+      '/make': 'make',
+      '/community': 'community'
+    },
+    PAGE_CONFIGS: {
+      default: {
+        ignoreSelectors: [
+          'script',
+          'style',
+          'noscript',
+          'code',
+          'pre',
+          'textarea',
+          'svg',
+          'canvas',
+          '[contenteditable=""]',
+          '[contenteditable="true"]',
+          '[role="textbox"]',
+          '[data-lexical-editor]'
+        ],
+        characterData: true
+      },
+      files: { characterData: true },
+      design: { characterData: true },
+      figjam: { characterData: false },
+      slides: { characterData: true },
+      make: { characterData: true },
+      community: { characterData: true }
+    },
+    OBSERVER_CONFIG: {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      characterData: true,
+      attributeFilter: ['title', 'aria-label', 'placeholder', 'data-tooltip']
+    },
+    DESC_SELECTORS: ['[data-testid="description"]', '[class*="description"]'],
+    TRANS_ENGINES: {
+      iflyrec: {
+        name: '讯飞听见',
+        url: 'https://fanyi.iflyrec.com/text-translate',
+        url_api: 'https://fanyi.iflyrec.com/TJHZTranslationService/v2/textAutoTranslation',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'https://fanyi.iflyrec.com'
+        },
+        getRequestData: (text) => ({
+          from: 2,
+          to: 1,
+          type: 1,
+          contents: [{ text }]
+        }),
+        responseIdentifier: 'biz[0].sectionResult[0].dst'
+      }
+    },
+    transEngine: 'iflyrec'
+  };
+
+  let pageConfig = {};
+
   const STATS = {
     exactHits: 0,
     phraseHits: 0,
@@ -310,9 +391,49 @@
 ;
 
   const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'CODE', 'PRE', 'TEXTAREA']);
-  const ATTRS_TO_TRANSLATE = ['title', 'aria-label', 'placeholder', 'data-tooltip'];
+  const ATTRS_TO_TRANSLATE = CONFIG.OBSERVER_CONFIG.attributeFilter;
   const TRANSLATION_CACHE = new Map();
   const TRANSLATION_CACHE_MAX_SIZE = 5000;
+
+  function debugLog(...args) {
+    if (!FeatureSet.enable_DebugLog) return;
+    console.log('[Figma-ZH]', ...args);
+  }
+
+  function detectPageType() {
+    const pathname = window.location.pathname || '/';
+    for (const [prefix, type] of Object.entries(CONFIG.PAGE_MAP)) {
+      if (pathname.startsWith(prefix)) return type;
+    }
+    return 'default';
+  }
+
+  function buildPageConfig(type = 'default') {
+    const base = CONFIG.PAGE_CONFIGS.default || {};
+    const current = CONFIG.PAGE_CONFIGS[type] || {};
+    return {
+      currentPageType: type,
+      ignoreSelectors: [...(base.ignoreSelectors || []), ...(current.ignoreSelectors || [])].join(','),
+      characterData: current.characterData ?? base.characterData ?? true,
+      descSelector: CONFIG.DESC_SELECTORS.join(',')
+    };
+  }
+
+  function updatePageConfig(trigger) {
+    const nextType = detectPageType();
+    if (nextType !== pageConfig.currentPageType) {
+      pageConfig = buildPageConfig(nextType);
+      debugLog(`${trigger}: pageType ->`, pageConfig.currentPageType);
+    }
+  }
+
+  function notify(message) {
+    if (typeof GM_notification === 'function') {
+      GM_notification(message);
+      return;
+    }
+    debugLog(message);
+  }
 
   const CANONICAL_MAP = new Map();
   const MAP_KEYS = Object.keys(MAP);
@@ -631,6 +752,7 @@
   };
 
   function applyDynamicRules(text) {
+    if (!FeatureSet.enable_DynamicRules) return null;
     for (const rule of DYNAMIC_RULES) {
       const match = text.match(rule.regex);
       if (!match) continue;
@@ -644,6 +766,7 @@
   }
 
   function applyPhraseReplacement(text) {
+    if (!FeatureSet.enable_RegExp) return text;
     if (!PHRASE_REGEX) return text;
     return text.replace(PHRASE_REGEX, (match, leadBoundary, phrase) => {
       const t = lookupTranslation(phrase);
@@ -667,6 +790,7 @@
   }
 
   function applyTokenFallback(text) {
+    if (!FeatureSet.enable_TokenFallback) return null;
     if (!/[A-Za-z]/.test(text)) return null;
     const parts = text.split(/([A-Za-z][A-Za-z'-]*)/g);
     if (!parts.length) return null;
@@ -703,6 +827,14 @@
       el.closest('input, textarea, [contenteditable=""], [contenteditable="true"], [role="textbox"], [data-lexical-editor]')
     ) {
       return true;
+    }
+
+    if (pageConfig.ignoreSelectors) {
+      try {
+        if (el.matches(pageConfig.ignoreSelectors) || el.closest(pageConfig.ignoreSelectors)) return true;
+      } catch (err) {
+        debugLog('ignoreSelectors match failed', err);
+      }
     }
 
     return false;
@@ -772,6 +904,7 @@
   }
 
   function translateAttributes(el) {
+    if (!FeatureSet.enable_AttrTranslate) return;
     for (const attr of ATTRS_TO_TRANSLATE) {
       const value = el.getAttribute(attr);
       if (!value) continue;
@@ -780,6 +913,105 @@
         el.setAttribute(attr, translated);
         STATS.attrHits += 1;
       }
+    }
+  }
+
+  function getNestedProperty(obj, path) {
+    return path.split('.').reduce((acc, part) => {
+      if (!acc) return undefined;
+      const match = part.match(/(\w+)(?:\[(\d+)\])?/);
+      if (!match) return undefined;
+      const key = match[1];
+      const index = match[2];
+      if (acc[key] === undefined) return undefined;
+      return index === undefined ? acc[key] : acc[key][Number(index)];
+    }, obj);
+  }
+
+  async function requestRemoteTranslation(text) {
+    if (!FeatureSet.enable_RemoteTranslate) return null;
+    if (typeof GM_xmlhttpRequest !== 'function') return null;
+    const engine = CONFIG.TRANS_ENGINES[CONFIG.transEngine];
+    if (!engine) return null;
+
+    return new Promise((resolve) => {
+      GM_xmlhttpRequest({
+        method: engine.method,
+        url: engine.url_api,
+        headers: engine.headers,
+        data: JSON.stringify(engine.getRequestData(text)),
+        onload: (res) => {
+          try {
+            const result = JSON.parse(res.responseText || '{}');
+            const translated = getNestedProperty(result, engine.responseIdentifier);
+            resolve(typeof translated === 'string' ? translated : null);
+          } catch (err) {
+            debugLog('remote translate parse failed', err);
+            resolve(null);
+          }
+        },
+        onerror: (err) => {
+          debugLog('remote translate failed', err);
+          resolve(null);
+        }
+      });
+    });
+  }
+
+  function attachDescTranslateButton() {
+    if (!FeatureSet.enable_RemoteTranslate) return;
+    const target = document.querySelector(pageConfig.descSelector);
+    if (!target || target.nextElementSibling?.id === 'figma-zh-translate-me') return;
+
+    const button = document.createElement('button');
+    button.id = 'figma-zh-translate-me';
+    button.textContent = '翻译';
+    button.style.cssText =
+      'margin-top:6px;padding:2px 8px;font-size:12px;line-height:20px;border-radius:6px;border:1px solid #d0d7de;background:#f6f8fa;cursor:pointer;';
+
+    button.addEventListener('click', async () => {
+      if (button.disabled) return;
+      const content = target.textContent?.trim();
+      if (!content) return;
+      button.disabled = true;
+      button.textContent = '翻译中...';
+      try {
+        const translated = await requestRemoteTranslation(content);
+        if (!translated) {
+          notify('远程翻译失败');
+          return;
+        }
+        const result = document.createElement('div');
+        result.style.cssText = 'margin-top:6px;font-size:12px;line-height:1.6;color:#57606a;white-space:pre-wrap;';
+        result.textContent = translated;
+        button.replaceWith(result);
+      } finally {
+        button.disabled = false;
+        if (button.isConnected) button.textContent = '翻译';
+      }
+    });
+
+    target.after(button);
+  }
+
+  function registerMenuCommand() {
+    const menuConfigs = [
+      { label: '正则规则', key: 'enable_RegExp' },
+      { label: '动态规则', key: 'enable_DynamicRules' },
+      { label: '词元回退', key: 'enable_TokenFallback' },
+      { label: '属性翻译', key: 'enable_AttrTranslate' },
+      { label: '远程翻译', key: 'enable_RemoteTranslate' },
+      { label: '调试日志', key: 'enable_DebugLog' }
+    ];
+
+    for (const { label, key } of menuConfigs) {
+      const text = `${FeatureSet[key] ? '禁用' : '启用'} ${label}`;
+      GM_registerMenuCommand(text, () => {
+        const next = !FeatureSet[key];
+        FeatureSet[key] = next;
+        GM_setValue(key, next);
+        notify(`${label}已${next ? '启用' : '禁用'}，刷新页面生效`);
+      });
     }
   }
 
@@ -826,9 +1058,7 @@
       try {
         scanSubtree(node);
       } catch (err) {
-        if (DEBUG) {
-          console.warn('[Figma-ZH] scan failed:', err);
-        }
+        debugLog('scan failed:', err);
       }
     }
     queue.clear();
@@ -842,16 +1072,26 @@
   }
 
   function startObserver() {
+    let previousURL = window.location.href;
     const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'childList') {
-          for (const addedNode of mutation.addedNodes) {
-            scheduleScan(addedNode);
-          }
-        } else if (mutation.type === 'attributes') {
-          scheduleScan(mutation.target);
-        } else if (mutation.type === 'characterData') {
-          scheduleScan(mutation.target.parentElement || document.body);
+      const currentURL = window.location.href;
+      if (currentURL !== previousURL) {
+        previousURL = currentURL;
+        updatePageConfig('URL变化');
+        TRANSLATION_CACHE.clear();
+      }
+
+      for (const { target, addedNodes, type } of mutations) {
+        if (type === 'childList' && addedNodes.length > 0) {
+          for (const node of addedNodes) scheduleScan(node);
+          continue;
+        }
+        if (type === 'attributes') {
+          scheduleScan(target);
+          continue;
+        }
+        if (type === 'characterData' && pageConfig.characterData) {
+          scheduleScan(target.parentElement || document.body);
         }
       }
     });
@@ -860,7 +1100,7 @@
       childList: true,
       subtree: true,
       attributes: true,
-      characterData: true,
+      characterData: pageConfig.characterData,
       attributeFilter: ATTRS_TO_TRANSLATE
     });
   }
@@ -871,10 +1111,13 @@
       return;
     }
 
+    updatePageConfig('初始化');
+    registerMenuCommand();
     scanSubtree(document.body);
+    attachDescTranslateButton();
     startObserver();
 
-    if (DEBUG) {
+    if (FeatureSet.enable_DebugLog) {
       setInterval(() => {
         console.log('[Figma-ZH] stats:', { ...STATS });
       }, 5000);
