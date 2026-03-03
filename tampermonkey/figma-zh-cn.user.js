@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Figma 汉化（简体中文）
 // @namespace    https://www.figma.com/
-// @version      0.2.0
+// @version      0.3.0
 // @description  Translate Figma UI text to Simplified Chinese in browser (Tampermonkey)
 // @author       linyichen
 // @match        https://www.figma.com/*
@@ -17,6 +17,7 @@
     exactHits: 0,
     phraseHits: 0,
     ruleHits: 0,
+    tokenHits: 0,
     cacheHits: 0,
     attrHits: 0,
     nodeScans: 0
@@ -405,6 +406,230 @@
     }
   ];
 
+  // Large token lexicon for fallback translation on unseen phrases.
+  const TOKEN_MAP = {
+    about: '关于',
+    access: '访问',
+    account: '账号',
+    accounts: '账号',
+    action: '操作',
+    actions: '操作',
+    active: '启用',
+    activity: '活动',
+    add: '添加',
+    added: '已添加',
+    adding: '添加中',
+    advanced: '高级',
+    all: '全部',
+    allow: '允许',
+    appearance: '外观',
+    apply: '应用',
+    app: '应用',
+    apps: '应用',
+    archive: '归档',
+    area: '区域',
+    article: '文章',
+    assign: '分配',
+    assigned: '已分配',
+    attach: '附加',
+    auto: '自动',
+    available: '可用',
+    background: '背景',
+    basic: '基础',
+    billing: '计费',
+    board: '画板',
+    border: '边框',
+    bottom: '底部',
+    browse: '浏览',
+    button: '按钮',
+    calendar: '日历',
+    center: '居中',
+    change: '更改',
+    chat: '聊天',
+    choose: '选择',
+    clear: '清除',
+    close: '关闭',
+    collapse: '折叠',
+    color: '颜色',
+    colors: '颜色',
+    comment: '评论',
+    comments: '评论',
+    complete: '完成',
+    completed: '已完成',
+    confirm: '确认',
+    connected: '已连接',
+    content: '内容',
+    continue: '继续',
+    copy: '复制',
+    create: '创建',
+    created: '已创建',
+    credits: '点数',
+    current: '当前',
+    custom: '自定义',
+    dark: '深色',
+    default: '默认',
+    delete: '删除',
+    design: '设计',
+    detail: '详情',
+    details: '详情',
+    dialog: '对话框',
+    disabled: '已禁用',
+    done: '完成',
+    download: '下载',
+    duplicate: '复制副本',
+    edit: '编辑',
+    editor: '编辑器',
+    email: '邮箱',
+    enable: '启用',
+    enabled: '已启用',
+    enter: '输入',
+    error: '错误',
+    export: '导出',
+    external: '外部',
+    file: '文件',
+    files: '文件',
+    filter: '筛选',
+    find: '查找',
+    font: '字体',
+    free: '免费',
+    from: '来自',
+    go: '前往',
+    group: '编组',
+    help: '帮助',
+    hidden: '隐藏',
+    home: '首页',
+    icon: '图标',
+    image: '图像',
+    import: '导入',
+    in: '在',
+    info: '信息',
+    input: '输入',
+    install: '安装',
+    language: '语言',
+    layout: '布局',
+    left: '左',
+    library: '资源库',
+    libraries: '资源库',
+    light: '浅色',
+    line: '线条',
+    link: '链接',
+    list: '列表',
+    load: '加载',
+    loaded: '已加载',
+    loading: '加载中',
+    lock: '锁定',
+    locked: '已锁定',
+    log: '日志',
+    login: '登录',
+    logout: '退出',
+    manage: '管理',
+    member: '成员',
+    members: '成员',
+    menu: '菜单',
+    mode: '模式',
+    more: '更多',
+    move: '移动',
+    name: '名称',
+    next: '下一步',
+    no: '无',
+    none: '无',
+    not: '不',
+    now: '现在',
+    of: '的',
+    off: '关闭',
+    on: '开启',
+    open: '打开',
+    option: '选项',
+    options: '选项',
+    organization: '组织',
+    other: '其他',
+    page: '页面',
+    pages: '页面',
+    panel: '面板',
+    pending: '待处理',
+    plan: '套餐',
+    plans: '套餐',
+    plugin: '插件',
+    plugins: '插件',
+    preview: '预览',
+    privacy: '隐私',
+    professional: '专业版',
+    profile: '个人资料',
+    project: '项目',
+    projects: '项目',
+    properties: '属性',
+    publish: '发布',
+    published: '已发布',
+    recent: '最近',
+    recents: '最近',
+    redo: '重做',
+    remove: '移除',
+    rename: '重命名',
+    replace: '替换',
+    report: '报告',
+    request: '请求',
+    required: '必需',
+    reset: '重置',
+    resource: '资源',
+    resources: '资源',
+    restore: '恢复',
+    result: '结果',
+    results: '结果',
+    retry: '重试',
+    review: '审核',
+    right: '右',
+    save: '保存',
+    search: '搜索',
+    section: '分区',
+    select: '选择',
+    send: '发送',
+    settings: '设置',
+    share: '分享',
+    show: '显示',
+    sign: '注册',
+    signup: '注册',
+    size: '尺寸',
+    style: '样式',
+    styles: '样式',
+    submit: '提交',
+    success: '成功',
+    support: '支持',
+    sync: '同步',
+    table: '表格',
+    team: '团队',
+    teams: '团队',
+    term: '条款',
+    terms: '条款',
+    text: '文本',
+    theme: '主题',
+    this: '此',
+    to: '到',
+    toolbar: '工具栏',
+    total: '总计',
+    try: '试用',
+    undo: '撤销',
+    unpublish: '取消发布',
+    update: '更新',
+    upgraded: '已升级',
+    upgrade: '升级',
+    upload: '上传',
+    usage: '用量',
+    use: '使用',
+    user: '用户',
+    users: '用户',
+    version: '版本',
+    view: '视图',
+    warning: '警告',
+    web: '网页',
+    widget: '小组件',
+    widgets: '小组件',
+    with: '与',
+    without: '无',
+    workspace: '工作区',
+    workspaces: '工作区',
+    your: '你的'
+  };
+
   function applyDynamicRules(text) {
     for (const rule of DYNAMIC_RULES) {
       const match = text.match(rule.regex);
@@ -428,6 +653,38 @@
       }
       return match;
     });
+  }
+
+  function lookupToken(token) {
+    if (!token) return null;
+    const lower = token.toLowerCase();
+    if (TOKEN_MAP[lower]) return TOKEN_MAP[lower];
+    if (lower.endsWith('s') && lower.length > 3) {
+      const singular = lower.slice(0, -1);
+      if (TOKEN_MAP[singular]) return TOKEN_MAP[singular];
+    }
+    return null;
+  }
+
+  function applyTokenFallback(text) {
+    if (!/[A-Za-z]/.test(text)) return null;
+    const parts = text.split(/([A-Za-z][A-Za-z'-]*)/g);
+    if (!parts.length) return null;
+
+    let translatedTokens = 0;
+    const out = parts
+      .map((part) => {
+        if (!part || !/[A-Za-z]/.test(part)) return part;
+        const translated = lookupToken(part);
+        if (!translated) return part;
+        translatedTokens += 1;
+        return translated;
+      })
+      .join('');
+
+    if (translatedTokens === 0 || out === text) return null;
+    STATS.tokenHits += translatedTokens;
+    return out;
   }
 
   function setCache(raw, translated) {
@@ -495,6 +752,19 @@
     }
 
     const replacedCore = applyPhraseReplacement(core);
+    if (replacedCore !== core) {
+      const out = `${lead}${replacedCore}${tail}`;
+      setCache(raw, out);
+      return out;
+    }
+
+    const tokenFallback = applyTokenFallback(core);
+    if (tokenFallback && tokenFallback !== core) {
+      const out = `${lead}${tokenFallback}${tail}`;
+      setCache(raw, out);
+      return out;
+    }
+
     const out = `${lead}${replacedCore}${tail}`;
     setCache(raw, out);
 

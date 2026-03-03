@@ -1,11 +1,12 @@
 # Figma Chinese (Simplified) Userscript
 
 一个基于 Tampermonkey 的 Figma 网页端汉化脚本。  
-通过词典映射 + 动态文本规则 + DOM 监听，将常见英文界面文案实时替换为简体中文。
+通过超大型内置词库（短语词典 + 词元词库）+ 动态文本规则 + DOM 监听，将英文界面文案实时替换为简体中文。
 
 ## 项目亮点
 
 - 覆盖 Figma 常见 UI 文案（按钮、菜单、提示、属性面板）
+- 内置超大型词库：短语直译 + 词元回退翻译（未收录整句也可按词翻译）
 - 支持动态内容翻译（如 `Loading...`、`No results ...`、`Upgrade to ...`）
 - 对新增 DOM 自动翻译（`MutationObserver`）
 - 避免误改用户输入区（跳过 `input`、`textarea`、`contenteditable` 等）
@@ -82,4 +83,3 @@ node --check tampermonkey/replacements.js
 
 本项目为第三方脚本，与 Figma 官方无关。  
 请仅在你信任的环境中使用，并自行评估脚本风险。
-
