@@ -1,0 +1,258 @@
+AI chat
+AI credits
+Added
+Admin
+Admins
+Alignment
+An error occurred
+Approve
+Assets
+Auto
+Back
+Back to files
+Background
+Basic
+Billing group
+Blur
+Bottom
+Buzz
+Cancel
+Center
+Change language
+Clear
+Clear search
+Close
+Code
+Code block
+Collection
+Color
+Colors
+Community
+Completed
+Component
+Components
+Confirm
+Connect
+Connected
+Connector
+Connectors
+Contact support
+Content
+Continue
+Copy
+Copy link
+Corner radius
+Count
+Create
+Create team
+Created
+Created in this file
+Current
+Custom
+Dark
+Decline
+Default
+Delay
+Delete
+Description
+Design
+Desktop
+Details
+Dev Mode
+Development
+Diamond
+Direction
+Disabled
+Disconnect
+Dismiss
+Document
+Done
+Download
+Duplicate
+Duration
+Edit
+Ellipse
+Email
+Embed
+Enabled
+Enterprise
+Error
+Export
+FigJam
+Figma
+Figma Buzz
+Figma Make
+Figma Slides
+File
+Files
+Fill
+Filter
+Find
+Fixed
+Font
+Font size
+Frame
+Free
+From Community
+Full
+Get started
+Go back
+Go to main component
+Got it
+Grid
+Group
+Guest
+Hidden
+Home
+Horizontal
+Image
+Import
+Language
+Learn more
+Leave
+Left
+Libraries
+Light
+Line
+Link
+Locked
+Log in
+Make
+Manage
+Media
+Medium
+Members
+Min width
+Mind map
+Mixed
+Monthly
+More
+More actions
+More options
+Name
+Next
+None
+Not now
+Offset
+Opacity
+Open
+Open in new tab
+Organization
+Other
+Other teams
+Overlay
+Overview
+Padding
+Page
+Pages
+Pending
+People
+Play
+Plugin
+Plugins
+Polygon
+Position
+Preview
+Professional
+Projects
+Properties
+Prototype
+Publish
+Published
+Recents
+Recommended
+Rectangle
+Reload
+Remove
+Removed
+Rename
+Replace
+Request sent
+Reset
+Resources
+Restore
+Retry
+Review
+Right
+Rotation
+Save
+Scale
+Search
+Seat type
+Section
+See all
+See more
+Select
+Select all
+Send
+Settings
+Shape
+Share
+Show more
+Site
+Size
+Slice
+Slides
+Slot
+Solid
+Something went wrong
+Spacing
+Square
+Stamp
+Star
+Start
+Start from scratch
+Status
+Sticky
+Stop
+Style
+Styles
+Submit
+Suggested
+Table
+Tablet
+Team
+Team name
+Team project
+Teams
+Template
+Templates
+Terms of Service
+Text
+Text style
+Theme
+Timeline
+Title
+Top left
+Total
+Triangle
+Trigger
+Try again
+Try it out
+Type
+Unassigned
+Unavailable
+Underline
+Undo
+Union
+Unpublish
+Untitled
+Update
+Upgrade
+Upgrade to Professional
+Upload
+Value
+Variable
+Variables
+Vector
+Version
+Vertical
+Video
+View
+View details
+View plans
+Webpage
+Widget
+Widgets
+Workspace
+Workspaces
