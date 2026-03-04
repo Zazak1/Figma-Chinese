@@ -11,7 +11,7 @@
 - 对新增 DOM 自动翻译（`MutationObserver`）
 - 避免误改用户输入区（跳过 `input`、`textarea`、`contenteditable` 等）
 - 内置缓存，减少重复计算，提高页面交互时的稳定性
-- 全能架构：页面类型识别 + 功能开关菜单（持久化）+ URL 变化重建配置 + 可选远程翻译
+- 全能架构：页面类型识别 + 功能开关菜单（持久化）+ URL 变化重建配置
 - 支持远程词库：GitHub 词库自动拉取 + 讯飞接口在线学习 + 本地缓存 + 手动刷新
 
 ## 目录结构
@@ -27,63 +27,47 @@
     └── extract_candidates.sh   # 文案候选提取脚本
 ```
 
-## 处理逻辑（全能模式）
+## 快速安装（Tampermonkey）
 
-1. 初始化：加载功能开关（`GM_getValue`）和页面配置。
-2. 页面识别：按 URL 前缀识别页面类型（`files/design/community/...`）。
-3. 首屏翻译：扫描文本节点与属性，按以下优先级处理：
-   - 静态词典
-   - 动态规则（正则）
-   - 词元回退翻译
-4. 增量翻译：`MutationObserver` 监听 DOM 变化，仅处理新增或变更节点。
-5. URL 变化：检测到路由变化后重建页面配置并清理缓存。
-6. 用户控制：通过 Tampermonkey 菜单开关功能（正则/动态规则/词元回退/属性翻译/远程翻译/调试日志）。
+### 方式 A：一键安装（推荐）
+
+1. 安装浏览器扩展 `Tampermonkey`。
+2. 打开下面链接并安装脚本：  
+   [figma-zh-cn.user.js](https://raw.githubusercontent.com/Zazak1/Figma-Chinese/main/tampermonkey/figma-zh-cn.user.js)
+3. 访问 [https://www.figma.com/](https://www.figma.com/) 并刷新页面。
+
+### 方式 B：本地手动安装
+
+1. 打开 Tampermonkey 控制台，点击 `Create a new script...`
+2. 复制 [tampermonkey/figma-zh-cn.user.js](./tampermonkey/figma-zh-cn.user.js) 内容粘贴
+3. 保存（`Ctrl/Cmd + S`）并刷新 Figma 页面
 
 ## 远程词库
 
 - 默认远程地址：`https://raw.githubusercontent.com/Zazak1/Figma-Chinese/main/dict/figma-zh-CN.json`
-- 行为：启动时尝试拉取并合并；失败时自动回退本地内置词库
+- 行为：启动时尝试拉取并合并；失败时自动回退本地内置词库（不影响可用性）
 - 讯飞学习：本地词库未命中时，后台调用讯飞接口翻译并写入持久化词库
 - 缓存：本地缓存 24 小时
-- 菜单项：
-  - `启用/禁用 远程词库`
-  - `立即刷新远程词库`
-  - `清空讯飞学习词库`
 
-## 安装教程
+## 菜单功能（Tampermonkey）
 
-### 1) 安装 Tampermonkey
-
-在浏览器扩展商店安装 Tampermonkey：
-
-- Chrome / Edge：搜索 `Tampermonkey`
-- Firefox：搜索 `Tampermonkey`
-
-安装完成后，浏览器工具栏会出现 Tampermonkey 图标。
-
-### 2) 安装脚本（本地方式）
-
-1. 打开 Tampermonkey 控制面板
-2. 点击 `Create a new script...`
-3. 清空默认内容
-4. 将 `tampermonkey/figma-zh-cn.user.js` 全部内容粘贴进去
-5. 保存（`Ctrl/Cmd + S`）
-
-### 3) 启用并验证
-
-1. 确认脚本状态为 `Enabled`
-2. 打开 [https://www.figma.com/](https://www.figma.com/)
-3. 刷新页面
-4. 验证常见文案是否已变为中文（例如 `Settings`、`Log out`、`Loading...`）
+- `正则规则`：启用/禁用正则短语翻译
+- `动态规则`：启用/禁用动态句式翻译
+- `词元回退`：启用/禁用词元级回退翻译
+- `属性翻译`：启用/禁用 `title/placeholder/aria-label` 等属性翻译
+- `远程翻译`：启用简介“翻译”按钮（调用讯飞）
+- `远程词库`：启用/禁用远程词库同步
+- `立即刷新远程词库`：手动拉取最新词库
+- `清空讯飞学习词库`：清空本地学习缓存
+- `调试日志`：输出命中统计和调试日志
 
 ## 更新词典（可选）
 
 当你想补充新文案时：
 
 1. 编辑 `dict/figma-zh-CN.json`
-2. 同步到 `tampermonkey/figma-zh-cn.user.js`（`MAP`）
-3. 可选同步到 `tampermonkey/replacements.js`
-4. 在 Tampermonkey 中重新保存脚本并刷新 Figma 页面
+2. 提交到仓库 `main` 分支
+3. 客户端通过“立即刷新远程词库”即可拉取最新条目
 
 ## 开发与校验
 
@@ -99,6 +83,13 @@ node --check tampermonkey/replacements.js
 - Figma 可能在 `canvas` 或非文本节点渲染该内容
 - 文案是新版本新增，词典尚未覆盖
 - 文案包含动态变量，需要补充规则
+
+### 远程词库/讯飞不生效怎么办？
+
+1. 检查 Tampermonkey 菜单中 `远程词库` 是否启用
+2. 确认脚本头部存在 `@connect fanyi.iflyrec.com` 与 `@connect raw.githubusercontent.com`
+3. 执行一次 `立即刷新远程词库`
+4. 刷新 Figma 页面
 
 ### 为什么输入框里的文字不翻译？
 
