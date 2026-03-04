@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Figma 汉化（简体中文）
 // @namespace    https://www.figma.com/
-// @version      0.4.0
+// @version      0.5.0
 // @description  Translate Figma UI text to Simplified Chinese in browser (Tampermonkey)
 // @author       linyichen
 // @match        https://www.figma.com/*
@@ -97,7 +97,11 @@
       timeout: 8000,
       cacheKey: 'remote_dict_cache_v1',
       cacheAtKey: 'remote_dict_cache_at_v1',
-      cacheTTL: 24 * 60 * 60 * 1000
+      cacheTTL: 24 * 60 * 60 * 1000,
+      learnedKey: 'remote_dict_learned_v1',
+      learnedMax: 2000,
+      minTextLen: 3,
+      maxTextLen: 80
     }
   };
 
@@ -458,6 +462,29 @@
     return changed;
   }
 
+  function loadLearnedDictionary() {
+    const key = CONFIG.REMOTE_DICT.learnedKey;
+    const raw = GM_getValue(key, '');
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        LEARN_STATE.learned = parsed;
+      }
+      const merged = mergeDict(parsed);
+      if (merged > 0) debugLog(`learned dict merged: ${merged}`);
+    } catch {
+      // ignore broken cache
+    }
+  }
+
+  function persistLearnedDictionary() {
+    const key = CONFIG.REMOTE_DICT.learnedKey;
+    const entries = Object.entries(LEARN_STATE.learned).slice(-CONFIG.REMOTE_DICT.learnedMax);
+    const learned = Object.fromEntries(entries);
+    GM_setValue(key, JSON.stringify(learned));
+  }
+
   function requestJson(url, timeout = 8000) {
     return new Promise((resolve) => {
       if (typeof GM_xmlhttpRequest !== 'function') {
@@ -514,6 +541,13 @@
   const DICT_STATE = {
     canonicalMap: new Map(),
     phraseRegex: null
+  };
+  const LEARN_STATE = {
+    queue: [],
+    pending: new Set(),
+    failed: new Set(),
+    processing: false,
+    learned: {}
   };
 
   function escapeRegExp(text) {
@@ -977,6 +1011,9 @@
     }
 
     const out = `${lead}${replacedCore}${tail}`;
+    if (out === raw) {
+      enqueueIflyDictionaryLearning(core);
+    }
     setCache(raw, out);
 
     return out;
@@ -1007,8 +1044,7 @@
     }, obj);
   }
 
-  async function requestRemoteTranslation(text) {
-    if (!FeatureSet.enable_RemoteTranslate) return null;
+  async function requestEngineTranslation(text) {
     if (typeof GM_xmlhttpRequest !== 'function') return null;
     const engine = CONFIG.TRANS_ENGINES[CONFIG.transEngine];
     if (!engine) return null;
@@ -1035,6 +1071,61 @@
         }
       });
     });
+  }
+
+  function shouldLearnFromIfly(text) {
+    if (!FeatureSet.enable_RemoteDict) return false;
+    if (!text || typeof text !== 'string') return false;
+    const cleaned = normalize(text);
+    if (!cleaned) return false;
+    if (cleaned.length < CONFIG.REMOTE_DICT.minTextLen || cleaned.length > CONFIG.REMOTE_DICT.maxTextLen) return false;
+    if (!/[A-Za-z]/.test(cleaned)) return false;
+    if (/https?:\/\/|www\./i.test(cleaned)) return false;
+    if (/^[\d\s.,:;!?()[\]{}'"`~!@#$%^&*_+=|\\/<>-]+$/.test(cleaned)) return false;
+    if (lookupTranslation(cleaned)) return false;
+    return true;
+  }
+
+  async function processLearnQueue() {
+    if (LEARN_STATE.processing) return;
+    LEARN_STATE.processing = true;
+
+    while (LEARN_STATE.queue.length > 0) {
+      const text = LEARN_STATE.queue.shift();
+      if (!text) continue;
+      if (LEARN_STATE.failed.has(text)) continue;
+      if (lookupTranslation(text)) continue;
+
+      const translated = await requestEngineTranslation(text);
+      if (!translated || translated === text) {
+        LEARN_STATE.failed.add(text);
+        continue;
+      }
+
+      LEARN_STATE.learned[text] = translated;
+      mergeDict({ [text]: translated });
+      persistLearnedDictionary();
+      scheduleScan(document.body);
+    }
+
+    LEARN_STATE.processing = false;
+  }
+
+  function enqueueIflyDictionaryLearning(text) {
+    if (!shouldLearnFromIfly(text)) return;
+    const cleaned = normalize(text);
+    if (LEARN_STATE.pending.has(cleaned)) return;
+
+    LEARN_STATE.pending.add(cleaned);
+    LEARN_STATE.queue.push(cleaned);
+    processLearnQueue().finally(() => {
+      LEARN_STATE.pending.delete(cleaned);
+    });
+  }
+
+  async function requestRemoteTranslation(text) {
+    if (!FeatureSet.enable_RemoteTranslate) return null;
+    return requestEngineTranslation(text);
   }
 
   function attachDescTranslateButton() {
@@ -1097,6 +1188,13 @@
     GM_registerMenuCommand('立即刷新远程词库', async () => {
       await loadRemoteDictionary();
       notify('远程词库刷新完成');
+    });
+
+    GM_registerMenuCommand('清空讯飞学习词库', () => {
+      LEARN_STATE.learned = {};
+      LEARN_STATE.failed.clear();
+      GM_setValue(CONFIG.REMOTE_DICT.learnedKey, '');
+      notify('讯飞学习词库已清空，刷新页面后生效');
     });
   }
 
@@ -1197,6 +1295,7 @@
     }
 
     rebuildDictionaryIndices();
+    loadLearnedDictionary();
     await loadRemoteDictionary();
     updatePageConfig('初始化');
     registerMenuCommand();
